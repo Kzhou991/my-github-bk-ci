@@ -56,6 +56,7 @@ import com.tencent.devops.common.pipeline.pojo.transfer.TransferBody
 import com.tencent.devops.common.pipeline.pojo.transfer.YamlWithVersion
 import com.tencent.devops.common.redis.RedisOperation
 import com.tencent.devops.common.web.utils.I18nUtil
+import com.tencent.devops.plugin.codecc.CodeccApi
 import com.tencent.devops.process.constant.ProcessMessageCode
 import com.tencent.devops.process.engine.control.lock.PipelineReleaseLock
 import com.tencent.devops.process.engine.dao.PipelineBuildDao
@@ -105,7 +106,8 @@ class PipelineVersionFacadeService @Autowired constructor(
     private val pipelineViewGroupService: PipelineViewGroupService,
     private val pipelineBuildSummaryDao: PipelineBuildSummaryDao,
     private val pipelineBuildDao: PipelineBuildDao,
-    private val buildLogPrinter: BuildLogPrinter
+    private val buildLogPrinter: BuildLogPrinter,
+    private val codeccApi: CodeccApi
 ) {
 
     companion object {
@@ -716,6 +718,9 @@ class PipelineVersionFacadeService @Autowired constructor(
             model = modelAndYaml.modelAndSetting.model
             setting = modelAndYaml.modelAndSetting.setting
         }
+        // feat：流水线配置包含敏感信息场景告警
+        val sensitiveInfo = codeccApi.getcodeccPipelineconfigResult(setting.toString(),userId)
+        logger.info("SENSITIVE_INFO:$sensitiveInfo")
         return if (pipelineId.isNullOrBlank()) {
             // 新建流水线产生草稿
             pipelineInfoFacadeService.createPipeline(

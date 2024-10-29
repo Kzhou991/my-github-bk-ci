@@ -207,4 +207,15 @@ class CodeccApi(
             return objectMapper.readValue(body)
         }
     }
+
+
+    fun  getcodeccPipelineconfigResult(content: String,userId: String): Result<Map<String, Any>>{
+        val result = taskExecution(
+            body = mapOf("content" to content,"userId" to userId),
+            path = "/prod/v2/apigw-app/codecc/scan/contentScan",
+            method = HttpMethod.POST
+        )
+        return objectMapper.readValue(result)
+    }
+
 }
