@@ -31,6 +31,7 @@ dependencies {
     api(project(":core:common:common-client"))
     api(project(":core:common:common-db-sharding"))
     api(project(":core:common:common-auth:common-auth-api"))
+    api(project(":core:common:common-codecc"))
     api(project(":core:environment:api-environment"))
     api(project(":core:artifactory:api-artifactory"))
     api(project(":core:notify:api-notify"))

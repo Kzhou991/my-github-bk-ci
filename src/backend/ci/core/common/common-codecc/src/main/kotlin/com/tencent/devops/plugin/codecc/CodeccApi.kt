@@ -209,13 +209,22 @@ class CodeccApi(
     }
 
 
-    fun  getcodeccPipelineconfigResult(content: String,userId: String): Result<Map<String, Any>>{
-        val result = taskExecution(
-            body = mapOf("content" to content,"userId" to userId),
-            path = "/prod/v2/apigw-app/codecc/scan/contentScan",
-            method = HttpMethod.POST
-        )
-        return objectMapper.readValue(result)
+    /**
+     * @param content 要扫描的内容
+     * @param userId 用户 ID
+     * @return 包含扫描结果的 [Result] 对象，成功时返回结果映射，失败时返回错误信息
+     */
+    fun getCodeccPipelineConfigResult(content: String, userId: String): Result<Map<String, Any>> {
+        return try {
+            // 执行任务并获取响应
+            val response = taskExecution(
+                body = mapOf("content" to content, "userId" to userId),
+                path = " /open/v2/apigw-app/codecc/scan/contentScan",
+                method = HttpMethod.POST
+            )
+           return objectMapper.readValue(response)
+        } catch (e: Exception) {
+            throw RemoteServiceException(errorMessage = "Failed to get codecc pipeline config result: ${e.message}")
+        }
     }
-
 }

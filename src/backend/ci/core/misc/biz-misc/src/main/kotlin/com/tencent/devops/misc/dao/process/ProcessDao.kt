@@ -36,13 +36,11 @@ import com.tencent.devops.model.process.tables.TPipelineBuildHistory
 import com.tencent.devops.model.process.tables.TPipelineDataClear
 import com.tencent.devops.model.process.tables.TPipelineInfo
 import com.tencent.devops.model.process.tables.records.TPipelineInfoRecord
-import org.jooq.Condition
-import org.jooq.DSLContext
-import org.jooq.Record
-import org.jooq.Result
+import org.jooq.*
 import org.jooq.impl.DSL
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
+import java.util.*
 
 @Suppress("LongParameterList", "TooManyFunctions")
 @Repository
@@ -133,6 +131,66 @@ class ProcessDao {
                 .fetchAny()
         }
     }
+    fun getAllPipelineInfoWithSettings(
+        dslContext: DSLContext,
+        minId: Long? = null,
+        maxId: Long? = null,
+    ): Result<Record7<String, Date, String, Int, String, String, Long>> {
+        with(TPipelineInfo.T_PIPELINE_INFO) {
+            val tPipelineResource = TPipelineResource.T_PIPELINE_RESOURCE
+            val conditions = mutableListOf<Condition>()
+            if (minId != null) {
+                conditions.add(ID.ge(minId))
+            }
+            if (maxId != null) {
+                conditions.add(ID.lt(maxId))
+            }
+            return dslContext.select(
+                this.LAST_MODIFY_USER,
+                this.UPDATE_TIME,
+                this.PIPELINE_NAME,
+                this.VERSION,
+                this.PROJECT_ID,
+                tPipelineResource.MODEL,
+                this.ID
+            ).from(this).join(tPipelineResource).on(
+                this.PIPELINE_ID.eq(tPipelineResource.PIPELINE_ID).and(this.PROJECT_ID.eq(tPipelineResource.PROJECT_ID))
+            ).where(conditions).fetch()
+
+        }
+
+    }
+
+
+    fun getMaxId(
+        dslContext: DSLContext,
+    ): Long {
+        with(TPipelineInfo.T_PIPELINE_INFO) {
+            val baseStep = dslContext.select(DSL.max(ID)).from(this)
+            return baseStep.skipCheck().fetchOne(0, Long::class.java)!!
+        }
+    }
+
+
+//    fun getAllPipelineInfo(dslContext: DSLContext): List<TPipelineInfoRecord> {
+//        with(TPipelineInfo.T_PIPELINE_INFO) {
+//            return dslContext.selectFrom(this)
+//                .fetch() // 获取所有记录
+//        }
+//    }
+//
+//    fun getSetting(
+//        dslContext: DSLContext,
+//        projectId: String,
+//        pipelineId: String
+//    ): PipelineSetting? {
+//        with(TPipelineSetting.T_PIPELINE_SETTING) {
+//            return dslContext.selectFrom(this)
+//                .where(PIPELINE_ID.eq(pipelineId).and(PROJECT_ID.eq(projectId)))
+//                .fetchOne(mapper)
+//        }
+//    }
+
 
     fun getMinPipelineInfoIdByProjectId(
         dslContext: DSLContext,
