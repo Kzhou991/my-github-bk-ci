@@ -27,15 +27,7 @@
 
 package com.tencent.devops.store.atom.service.impl
 
-import com.tencent.devops.common.api.constant.COMPONENT
-import com.tencent.devops.common.api.constant.CommonMessageCode
-import com.tencent.devops.common.api.constant.INIT_VERSION
-import com.tencent.devops.common.api.constant.KEY_OS
-import com.tencent.devops.common.api.constant.KEY_OS_ARCH
-import com.tencent.devops.common.api.constant.KEY_OS_NAME
-import com.tencent.devops.common.api.constant.NODEJS
-import com.tencent.devops.common.api.constant.REQUIRED
-import com.tencent.devops.common.api.constant.TYPE
+import com.tencent.devops.common.api.constant.*
 import com.tencent.devops.common.api.enums.FrontendTypeEnum
 import com.tencent.devops.common.api.exception.ErrorCodeException
 import com.tencent.devops.common.api.pojo.Result
@@ -70,36 +62,18 @@ import com.tencent.devops.store.pojo.atom.enums.AtomFailPolicyEnum
 import com.tencent.devops.store.pojo.atom.enums.AtomRetryPolicyEnum
 import com.tencent.devops.store.pojo.atom.enums.AtomStatusEnum
 import com.tencent.devops.store.pojo.atom.enums.JobTypeEnum
-import com.tencent.devops.store.pojo.common.ATOM_INPUT
-import com.tencent.devops.store.pojo.common.ATOM_POST
-import com.tencent.devops.store.pojo.common.ATOM_POST_CONDITION
-import com.tencent.devops.store.pojo.common.ATOM_POST_ENTRY_PARAM
-import com.tencent.devops.store.pojo.common.ATOM_POST_FLAG
-import com.tencent.devops.store.pojo.common.ATOM_POST_NORMAL_PROJECT_FLAG_KEY_PREFIX
-import com.tencent.devops.store.pojo.common.ATOM_POST_VERSION_TEST_FLAG_KEY_PREFIX
-import com.tencent.devops.store.pojo.common.KEY_ATOM_CODE
-import com.tencent.devops.store.pojo.common.KEY_CONFIG
+import com.tencent.devops.store.pojo.common.*
 import com.tencent.devops.store.pojo.common.KEY_DEFAULT
-import com.tencent.devops.store.pojo.common.KEY_DEFAULT_FLAG
-import com.tencent.devops.store.pojo.common.KEY_DEMANDS
-import com.tencent.devops.store.pojo.common.KEY_EXECUTION
-import com.tencent.devops.store.pojo.common.KEY_FINISH_KILL_FLAG
 import com.tencent.devops.store.pojo.common.KEY_INPUT
-import com.tencent.devops.store.pojo.common.KEY_LANGUAGE
-import com.tencent.devops.store.pojo.common.KEY_MINIMUM_VERSION
-import com.tencent.devops.store.pojo.common.KEY_OUTPUT
-import com.tencent.devops.store.pojo.common.KEY_PACKAGE_PATH
-import com.tencent.devops.store.pojo.common.KEY_RUNTIME_VERSION
-import com.tencent.devops.store.pojo.common.KEY_TARGET
-import com.tencent.devops.store.pojo.common.TASK_JSON_NAME
 import com.tencent.devops.store.pojo.common.enums.ReleaseTypeEnum
 import com.tencent.devops.store.pojo.common.enums.StoreTypeEnum
-import javax.ws.rs.core.Response
+import org.apache.commons.lang3.StringUtils
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import javax.ws.rs.core.Response
 
 @Suppress("ALL")
 @Service
@@ -387,14 +361,30 @@ class MarketAtomCommonServiceImpl : MarketAtomCommonService {
                 params = arrayOf(KEY_EXECUTION)
             )
         }
-        val language = executionInfoMap[KEY_LANGUAGE] as? String
-        if (language.isNullOrBlank()) {
-            // 抛出错误提示
-            throw ErrorCodeException(
-                errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
-                params = arrayOf(KEY_LANGUAGE)
-            )
-        }
+
+        //pref:完善研发商店组件配置文件参数校验 #11269
+        val atomLanguage = marketAtomEnvInfoDao.getAtomLanguage(dslContext, atomCode, version)
+        val language = executionInfoMap[KEY_LANGUAGE]?.let { language ->
+            when (language) {
+                is String -> {
+                    if (StringUtils.equals(atomLanguage, language)) {
+                        language
+                    } else {
+                        throw ErrorCodeException(
+                            errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NOT_MATCH,
+                            params = arrayOf(KEY_LANGUAGE)
+                        )
+                    }
+                }
+                else -> throw ErrorCodeException(
+                    errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_INVALID,
+                    params = arrayOf(KEY_LANGUAGE)
+                )
+            }
+        } ?: throw ErrorCodeException(
+            errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
+            params = arrayOf(KEY_LANGUAGE)
+        )
         val config = taskDataMap[KEY_CONFIG] as? Map<String, Any>
         config?.let { validateConfigMap(config) }
         val atomPostMap = executionInfoMap[ATOM_POST] as? Map<String, Any>
@@ -426,7 +416,15 @@ class MarketAtomCommonServiceImpl : MarketAtomCommonService {
         val atomEnvRequests = mutableListOf<AtomEnvRequest>()
         val osList = executionInfoMap[KEY_OS] as? List<Map<String, Any>>
         val finishKillFlag = executionInfoMap[KEY_FINISH_KILL_FLAG] as? Boolean
-        val runtimeVersion = executionInfoMap[KEY_RUNTIME_VERSION] as? String
+        val runtimeVersion = executionInfoMap[KEY_RUNTIME_VERSION]?.let { runtimeVersion ->
+            if (runtimeVersion !is String) {
+                throw ErrorCodeException(
+                    errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_INVALID,
+                    params = arrayOf(KEY_RUNTIME_VERSION)
+                )
+            }
+            runtimeVersion
+        }
         val finalRuntimeVersion = if (runtimeVersion.isNullOrBlank() && language == NODEJS) {
             // 如果nodejs插件未配置runtimeVersion，则给runtimeVersion赋默认值10.*
             "10.*"
@@ -436,22 +434,40 @@ class MarketAtomCommonServiceImpl : MarketAtomCommonService {
         if (null != osList) {
             val osDefaultEnvNumMap = mutableMapOf<String, Int>()
             osList.forEach { osExecutionInfoMap ->
-                val osName = osExecutionInfoMap[KEY_OS_NAME] as? String
-                if (osName.isNullOrBlank()) {
-                    // 执行入口为空则校验失败
-                    throw ErrorCodeException(
-                        errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
-                        params = arrayOf(KEY_OS_NAME)
-                    )
-                }
-                val target = osExecutionInfoMap[KEY_TARGET] as? String
-                if (target == null) {
-                    // 执行入口为空则校验失败
-                    throw ErrorCodeException(
-                        errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
-                        params = arrayOf(KEY_TARGET)
-                    )
-                }
+//                val osName = osExecutionInfoMap[KEY_OS_NAME] as? String
+//                if (osName.isNullOrBlank()) {
+//                    // 执行入口为空则校验失败
+//                    throw ErrorCodeException(
+//                        errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
+//                        params = arrayOf(KEY_OS_NAME)
+//                    )
+//                }
+                val osName = osExecutionInfoMap[KEY_OS_NAME]?.let { osName ->
+                    if (osName is String) {
+                        osName
+                    } else {
+                        throw ErrorCodeException(
+                            errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_INVALID,
+                            params = arrayOf(KEY_OS_NAME)
+                        )
+                    } } ?: throw ErrorCodeException(
+                    errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
+                    params = arrayOf(KEY_OS_NAME)
+                )
+
+                val target = executionInfoMap[KEY_TARGET]?.let { target ->
+                    if (target is String) {
+                        target
+                    } else {
+                        throw ErrorCodeException(
+                            errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_INVALID,
+                            params = arrayOf(KEY_TARGET)
+                        )
+                    }
+                } ?: throw ErrorCodeException(
+                    errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
+                    params = arrayOf(KEY_TARGET)
+                )
                 val osArch = osExecutionInfoMap[KEY_OS_ARCH] as? String
                 val defaultFlag = osExecutionInfoMap[KEY_DEFAULT_FLAG] as? Boolean ?: false
                 // 统计每种操作系统默认环境配置数量
@@ -490,14 +506,19 @@ class MarketAtomCommonServiceImpl : MarketAtomCommonService {
                 }
             }
         } else {
-            val target = executionInfoMap[KEY_TARGET] as? String
-            if (target == null) {
-                // 执行入口为空则校验失败
-                throw ErrorCodeException(
-                    errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
-                    params = arrayOf(KEY_TARGET)
-                )
-            }
+            val target = executionInfoMap[KEY_TARGET]?.let { target ->
+                if (target is String) {
+                    target
+                } else {
+                    throw ErrorCodeException(
+                        errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_INVALID,
+                        params = arrayOf(KEY_TARGET)
+                    )
+                }
+            } ?: throw ErrorCodeException(
+                errorCode = StoreMessageCode.USER_REPOSITORY_TASK_JSON_FIELD_IS_NULL,
+                params = arrayOf(KEY_TARGET)
+            )
             val pkgLocalPath = executionInfoMap[KEY_PACKAGE_PATH] as? String ?: ""
             val atomEnvRequest = AtomEnvRequest(
                 userId = userId,
